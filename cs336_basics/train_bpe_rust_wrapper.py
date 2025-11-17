@@ -11,7 +11,14 @@ import json
 import time
 from cs336_basics.train_bpe import pretokenize
 
-def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str]) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+
+def train_bpe(
+    input_path: str,
+    vocab_size: int,
+    special_tokens: list[str],
+    num_processes: int | None = None,
+    chunks_per_process: int | None = None,
+) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
     Train BPE using Rust implementation with Python pretokenization.
     
@@ -19,6 +26,8 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str]) -> tu
         input_path: Path to the input text file
         vocab_size: Target vocabulary size
         special_tokens: List of special tokens (e.g., ["<|endoftext|>"])
+    num_processes: Number of processes for pretokenization (default: auto-detect, max 8)
+    chunks_per_process: How many chunks to request per process (default: auto, >=1)
     
     Returns:
         Tuple of (id_to_token dict, list of merges)
@@ -27,9 +36,14 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str]) -> tu
         from cs336_basics.cs336_bpe_rust import train_bpe_rust
         
         # Step 1: Pretokenize using Python (from train_bpe.py)
-        print(f"Pretokenizing {input_path} using Python...")
+        print(f"Pretokenizing {input_path} using Python (num_processes={num_processes or 'auto'})...")
         special_tokens_bytes = [token.encode("utf-8") for token in special_tokens]
-        word_freq = pretokenize(input_path, special_tokens=special_tokens_bytes)
+        word_freq = pretokenize(
+            input_path,
+            special_tokens=special_tokens_bytes,
+            num_processes=num_processes,
+            chunks_per_process=chunks_per_process,
+        )
         print(f"Pretokenization complete: {len(word_freq)} unique tokens")
         
         # Convert Counter to dict with string keys and int values
@@ -49,7 +63,13 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str]) -> tu
         # Fallback to Python implementation if Rust not available
         print("Warning: Rust implementation not available, falling back to Python")
         from cs336_basics.train_bpe import train_bpe as train_bpe_python
-        return train_bpe_python(input_path, vocab_size, special_tokens)
+        return train_bpe_python(
+            input_path,
+            vocab_size,
+            special_tokens,
+            num_processes=num_processes,
+            chunks_per_process=chunks_per_process,
+        )
 
 
 def main():
@@ -58,9 +78,17 @@ def main():
     input_path = 'tests/fixtures/TinyStoriesV2-GPT4-train.txt'
     vocab_size = 10000
     special_tokens = ["<|endoftext|>"]
+    num_processes = 4  # Limit to 4 processes to avoid system overload
+    chunks_per_process = 100  # Request more, smaller chunks per worker for better progress granularity
     
     print(f"Training BPE with vocab_size={vocab_size} on {input_path}...")
-    id_to_token, merges = train_bpe(input_path, vocab_size, special_tokens)
+    id_to_token, merges = train_bpe(
+        input_path,
+        vocab_size,
+        special_tokens,
+        num_processes=num_processes,
+        chunks_per_process=chunks_per_process,
+    )
     
     training_time = time.time() - start_time
     print(f"Training completed in {training_time:.2f} seconds")
